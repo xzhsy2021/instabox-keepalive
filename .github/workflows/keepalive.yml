@@ -1,0 +1,37 @@
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: ssh keepalive (wakes or keeps the machine active)
+        env:
+          IB_USER: ${{ secrets.IB_USER }}
+        run: |
+          if [ -z "$IB_USER" ]; then echo "::error::missing secret IB_USER"; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for i in 1 2 3; do
+            echo "attempt $i at $(date -u +%H:%M:%S)"
+            if ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+                   -o ConnectTimeout=30 -o ServerAliveInterval=10 -p 2222 \
+                   "$IB_USER@ssh.instabox.sh" 'uptime; echo KEEPALIVE-OK'; then
+              exit 0
+            fi
+            sleep 25
+          done
+          echo "::error::keepalive failed after 3 attempts"
+          exit 1
+
